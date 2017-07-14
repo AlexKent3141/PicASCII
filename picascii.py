@@ -18,16 +18,22 @@ def on_connect(connection, event):
         return
     main_loop(connection)
 
-def on_join(connection, event):
-    main_loop(connection)
-
 def on_disconnect(connection, event):
     raise SystemExit()
+
+def on_publicmsg(connection, event):
+    handle_msg(event.arguments[0], connection)
 
 # Send a message to the target.
 def send(message, connection=None):
     if connection:
-        connection.privmsg(target, message)
+        # privmsg's cannot contain newline or CR characters.
+        # Must be broken up into separate messages.
+        lines = message.split('\n')
+        for line in lines:
+            # Ensure that no illegal characters are left.
+            line = line.replace('\r', '').replace('\n', '')
+            connection.privmsg(target, line)
     else:
         print message
 
@@ -37,30 +43,32 @@ def get_lines():
         yield sys.stdin.readline().strip()
 
 # Main loop for the bot - process incoming messages.
-def main_loop(connection=None):
-    global image_width
+def read_input(connection=None):
     for line in itertools.takewhile(bool, get_lines()):
-        tokens = line.split(' ')
-        command = tokens[0]
-        if command == 'show':
-            if len(tokens) > 1:
-                img = find_image(tokens[1:])
-                if img:
-                    temp = "temp.jpg"
-                    download_image(img, temp)
-                    send(image_to_ascii(temp, image_width, " .,:;ox%#@"), connection)
-                    os.remove(temp)
-                else:
-                    send("No matching images found!", connection)
+         handle_msg(line)
+
+# Handle a received message.
+def handle_msg(line, connection=None):
+    global image_width
+    tokens = line.split(' ')
+    command = tokens[0]
+    if command == 'show':
+        if len(tokens) > 1:
+            img = find_image(tokens[1:])
+            if img:
+                temp = "temp.jpg"
+                download_image(img, temp)
+                send(image_to_ascii(temp, image_width, " .,:;ox%#@"), connection)
+                os.remove(temp)
             else:
-                send("Err... you forgot to add search terms!", connection)
-        elif command == 'size':
-            if len(tokens) == 2:
-                image_width = int(tokens[1])
-            else:
-                send("You must specify an integer size!", connection)
-        elif command == 'quit':
-            break
+                send("No matching images found!", connection)
+        else:
+            send("Err... you forgot to add search terms!", connection)
+    elif command == 'size':
+        if len(tokens) == 2:
+            image_width = int(tokens[1])
+        else:
+            send("You must specify an integer size!", connection)
 
 # Parse command line arguments.
 def get_args():
@@ -91,11 +99,11 @@ def main():
 
     if online:
         c.add_global_handler("welcome", on_connect)
-        c.add_global_handler("join", on_join)
         c.add_global_handler("disconnect", on_disconnect)
+        c.add_global_handler("pubmsg", on_publicmsg)
         reactor.process_forever()
     else:
-        main_loop()
+        read_input()
 
 if __name__ == '__main__':
     main()
