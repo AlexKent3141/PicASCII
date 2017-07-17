@@ -4,12 +4,12 @@ from PIL import ImageDraw
 import math
 
 class RegionIntensities:
-    DIVISION_RATIO = 0.1
+    DIVISION_RATIO = 0.2
 
     def __init__(self, img, l, t, w, h):
-        self.horiz_weight = 0.2
+        self.horiz_weight = 0.1
         self.vert_weight = 0.1
-        self.centre_weight = 0.7
+        self.centre_weight = 0.9
 
         # Calculate regional intensities for the image.
         sw = math.floor(w * self.DIVISION_RATIO)
@@ -19,6 +19,7 @@ class RegionIntensities:
         self.ti = self.region_intensity(img, l, t, w, sh)
         self.bi = self.region_intensity(img, l, t+h-sh, w, sh)
         self.ci = self.region_intensity(img, l+sw, t+sh, w-2*sw, h-2*sh)
+        self.max_i = max([self.li, self.ri, self.ti, self.bi, self.ci])
 
     # Compute the intensity value for a region
     def region_intensity(self, img, pixel_left, pixel_top, pixel_width, pixel_height):
@@ -35,11 +36,11 @@ class RegionIntensities:
     def intensity(self, rgb):
         return 0.299*rgb[0] + 0.587*rgb[1] + 0.114*rgb[2]
 
-    def Compare(self, other):
+    def diff(self, other):
         # Compare the intensities and compute the error.
-        return self.horiz_weight*(pow(self.li-other.li, 2) + pow(self.ri-other.ri, 2)) + \
-               self.vert_weight*(pow(self.ti-other.ti, 2) + pow(self.bi-other.bi, 2)) + \
-               self.centre_weight*pow(self.ci-other.ci, 2)
+        return self.horiz_weight*(abs(self.li-other.li) + abs(self.ri-other.ri)) + \
+               self.vert_weight*(abs(self.ti-other.ti) + abs(self.bi-other.bi)) + \
+               self.centre_weight*abs(self.ci-other.ci)
 
 # This class describes the shape of the character in terms of intensity.
 class CharacterIntensity:
@@ -59,6 +60,16 @@ class CharacterIntensity:
         h = s[1]
         self.region = RegionIntensities(img, 0, 0, w, h)
 
+def normalise(intensities):
+    # Normalise the intensities so that each region intensity is between 0 & 1.
+    max_i = max(intensities, key=lambda ri: ri.max_i).max_i
+    for i in intensities:
+        i.li /= max_i
+        i.ri /= max_i
+        i.bi /= max_i
+        i.ti /= max_i
+        i.ci /= max_i
+
 def image_to_ascii(image_path, max_char_width):
 
     # Compute the intensities for each character.
@@ -66,6 +77,8 @@ def image_to_ascii(image_path, max_char_width):
     for i in range(32, 127):
         its = CharacterIntensity(chr(i))
         char_intensities.append(its)
+
+    normalise([ci.region for ci in char_intensities])
 
     img = Image.open(image_path).convert('RGB')
     s = img.size
@@ -82,6 +95,8 @@ def image_to_ascii(image_path, max_char_width):
             ri = RegionIntensities(img, c*pixel_width, r*pixel_height, pixel_width, pixel_height)
             ris.append(ri)
 
+    normalise(ris)
+
     # Find the most suitable character for each region.
     out = ""
     for r in range(char_height):
@@ -90,7 +105,7 @@ def image_to_ascii(image_path, max_char_width):
             min_error = 1000000
             best = None
             for ci in char_intensities:
-                err = ci.region.Compare(ri)
+                err = ci.region.diff(ri)
                 if err < min_error:
                     min_error = err
                     best = ci.c
