@@ -58,7 +58,7 @@ def handle_msg(line, connection=None):
             if img:
                 temp = "temp.jpg"
                 download_image(img, temp)
-                send(image_to_ascii(temp, image_width, " .,:;ox%#@"), connection)
+                send(image_to_ascii(temp, image_width), connection)
                 os.remove(temp)
             else:
                 send("No matching images found!", connection)
