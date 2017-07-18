@@ -5,7 +5,8 @@ import itertools
 import irc.client
 
 from ascii_converter import *
-from image_finder import *
+from pixabay_finder import *
+from google_finder import *
 
 ''' Picascii is an IRC bot which displays pixel art for the specified search terms. '''
 
@@ -47,6 +48,33 @@ def read_input(connection=None):
     for line in itertools.takewhile(bool, get_lines()):
          handle_msg(line)
 
+# Deal with an image request.
+def image_requested(search_terms, connection=None):
+    f = GoogleFinder()
+
+    # Try to find and download an image a few times - some websites may block this.
+    attempts = 0
+    sent = False
+    while not sent and attempts < 5:
+        try:
+            send("Searching...", connection)
+            img = f.find(search_terms)
+            if img:
+                print img
+                temp = "temp.jpg"
+                f.download(img, temp)
+                asc = image_to_ascii(temp, image_width)
+                send(asc, connection)
+                sent = True
+                os.remove(temp)
+            else:
+                send("No matching images found!", connection)
+        except:
+            attempts += 1
+
+    if not sent:
+        send("Could not access a matching image!", connection)
+
 # Handle a received message.
 def handle_msg(line, connection=None):
     global image_width
@@ -54,14 +82,7 @@ def handle_msg(line, connection=None):
     command = tokens[0]
     if command == 'show':
         if len(tokens) > 1:
-            img = find_image(tokens[1:])
-            if img:
-                temp = "temp.jpg"
-                download_image(img, temp)
-                send(image_to_ascii(temp, image_width), connection)
-                os.remove(temp)
-            else:
-                send("No matching images found!", connection)
+            image_requested(tokens[1:], connection)
         else:
             send("Err... you forgot to add search terms!", connection)
     elif command == 'size':
